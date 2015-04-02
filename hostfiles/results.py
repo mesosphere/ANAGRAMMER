@@ -4,12 +4,12 @@ class Result(object):
 	def __repr__(self):
 		return json.dumps(self.__dict__, sort_keys = True)
 
-class CrawlResult(Result):
+class FinderResult(Result):
 	"""The result of mining a word for anagrams
 
-	CrawlResult must serialize to JSON as its default representation:
+	FinderResult must serialize to JSON as its default representation:
 
-	>>> res = CrawlResult(
+	>>> res = FinderResult(
 	... 	"1234",
 	... 	"foo",
 	... 	["foo", "oof"]
@@ -22,12 +22,12 @@ class CrawlResult(Result):
 		self.word   = word
 		self.anagrams  = anagrams
 
-class RenderResult(Result):
+class DefinerResult(Result):
 	"""The result of getting the definition of an anagram
 
-	RenderResult must serialize to JSON as its default representation:
+	DefinerResult must serialize to JSON as its default representation:
 
-	>>> res = RenderResult(
+	>>> res = DefinerResult(
 	... 	"1234",
 	... 	"foo",
 	... 	"definition of foo"

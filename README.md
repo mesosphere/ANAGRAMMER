@@ -7,9 +7,9 @@ See the [accompanying slides](http://mesosphere.github.io/oscon-mesos-2014/#/) f
 
 ANAGRAMMER consists of three main components:
 
-- `CrawlExecutor` extends `mesos.Executor`
-- `RenderExecutor` extends `mesos.Executor`
-- `RenderingCrawler` extends `mesos.Scheduler` and launches tasks with the executors
+- `FinderExecutor` extends `mesos.Executor`
+- `DefinerExecutor` extends `mesos.Executor`
+- `RenderingFinder` extends `mesos.Scheduler` and launches tasks with the executors
 
 ## Quick Start with Vagrant
 
@@ -38,6 +38,10 @@ You can see that 1 slave is registered and you've got some idle CPUs and Memory.
 ```bash
 $ vagrant ssh
 vagrant@mesos:~ $ cd sandbox/mesosphere/ANAGRAMMER/hostfiles
+# See results
+vagrant@mesos:hostfiles $ less result.dot
+```
+
 # Start the scheduler with the seed word, the mesos master ip and optionally a task limit
 vagrant@mesos:hostfiles $ python anagrammer.py word 127.0.1.1:5050 42
 # <Ctrl+C> to stop..
@@ -55,17 +59,17 @@ $ vagrant destroy
 
 ## Anagrammer Architecture (Follows RENDLER framework)
 
-### Crawl Executor
+### Finder Executor
 
 - Interprets incoming tasks' `task.data` field as a word
 - Fetches the anagrams for that word and extracts them from the document
-- Sends a framework message to the scheduler containing the crawl result.
+- Sends a framework message to the scheduler containing the finder result (the anagrams).
 
-### Render Executor
+### Definer Executor
 
 - Interprets incoming tasks' `task.data` field as a word
 - Fetches the anagram, and find the definition of it, if it's a real word
-- Sends a framework message to the scheduler containing the render result.
+- Sends a framework message to the scheduler containing the definer result (the definition).
 
 ### Intermediate Data Structures
 
@@ -73,7 +77,7 @@ We define some common data types to facilitate communication between the schedul
 and the executors.  Their default representation is JSON.
 
 ```python
-results.CrawlResult(
+results.FinderResult(
     "1234",                                 # taskId
     "foo",                                  # word
     ["foo", "oof"]                          # anagrams
@@ -81,7 +85,7 @@ results.CrawlResult(
 ```
 
 ```python
-results.RenderResult(
+results.DefinerResult(
     "1234",                                 # taskId
     "foo",                                  # word
     "definition of foo"                     # definition
@@ -92,27 +96,27 @@ results.RenderResult(
 
 #### Data Structures
 
-- `crawlQueue`: list of words
-- `renderQueue`: list of words
+- `finderQueue`: list of words
+- `definerQueue`: list of words
 - `processedwords`: set or words
-- `crawlResults`: list of word tuples
-- `renderResults`: map of words to definitions
+- `finderResults`: list of word tuples
+- `definerResults`: map of words to definitions
 
 #### Scheduler Behavior
 
-The scheduler accepts one word as a command-line parameter to seed the render
-and crawl queues.
+The scheduler accepts one word as a command-line parameter to seed the definer
+and finder queues.
 
-1. For each word, create a task in both the render queue and the crawl queue.
+1. For each word, create a task in both the definer queue and the finder queue.
 
-1. Upon receipt of a crawl result, add an element to the crawl results
-   adjacency list.  Append to the render and crawl queues each word that is
+1. Upon receipt of a finder result, add an element to the finder results
+   adjacency list.  Append to the definer and finder queues each word that is
    _not_ present in the set of processed words.  Add these enqueued words to
    the set of processed words.
 
-1. Upon receipt of a render result, add an element to the render results map.
+1. Upon receipt of a definer result, add an element to the definer results map.
 
-1. The crawl and render queues are drained in FCFS order at a rate determined
+1. The finder and definer queues are drained in FCFS order at a rate determined
    by the resource offer stream.  When the queues are empty, the scheduler
    declines resource offers to make them available to other frameworks running
    on the cluster.

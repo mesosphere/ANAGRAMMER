@@ -38,25 +38,25 @@ TASK_ATTEMPTS = 5  # how many times a task is attempted
 # https://github.com/mesosphere/deimos/blob/master/deimos/mesos_pb2.py
 # https://github.com/apache/mesos/blob/master/include/mesos/mesos.proto
 #
-class RenderingCrawler(Scheduler):
-    def __init__(self, seedWord, maxRenderTasks, crawlExecutor, renderExecutor):
+    def __init__(self, seedWord, maxDefinerTasks, finderExecutor, definerExecutor):
+class RenderingFinder(Scheduler):
         print "Anagrammer"
         print "======="
         print "seedWord: [%s]\n" % seedWord
         self.seedWord = seedWord
-        self.crawlExecutor  = crawlExecutor
-        self.renderExecutor = renderExecutor
-        self.crawlQueue = deque([seedWord])
-        self.renderQueue = deque([seedWord])
+        self.finderExecutor  = finderExecutor
+        self.definerExecutor = definerExecutor
+        self.finderQueue = deque([seedWord])
+        self.definerQueue = deque([seedWord])
         self.processedURLs = set([seedWord])
-        self.crawlResults = set([])
-        self.renderResults = {}
+        self.finderResults = set([])
+        self.definerResults = {}
         self.tasksCreated  = 0
         self.tasksRunning = 0
         self.tasksFailed = 0
         self.tasksRetrying = {}
-        self.renderLimitReached = False
-        self.maxRenderTasks = maxRenderTasks
+        self.definerLimitReached = False
+        self.maxDefinerTasks = maxDefinerTasks
         self.shuttingDown = False
 
     def registered(self, driver, frameworkId, masterInfo):
@@ -100,27 +100,27 @@ def makeTaskPrototype(self, offer):
     mem.scalar.value = TASK_MEM
     return task
 
-    def makeCrawlTask(self, url, offer):
+    def makefinderTask(self, url, offer):
         task = self.makeTaskPrototype(offer)
-        task.name = "crawl task %s" % task.task_id.value
+        task.name = "finder task %s" % task.task_id.value
         #
         # TODO
         #
         # 
         pass
 
-    def makeRenderTask(self, url, offer):
+    def makeDefinerTask(self, url, offer):
         task = self.makeTaskPrototype(offer)
-        task.name = "render task %s" % task.task_id.value
+        task.name = "definer task %s" % task.task_id.value
         #
         # TODO
         #
         pass
-    
+
     def retryTask(self, task_id, url):
         if not url in self.tasksRetrying:
             self.tasksRetrying[url] = 1
-            
+
         if self.tasksRetrying[url] < TASK_ATTEMPTS:
             self.tasksRetrying[url] += 1
             ordinal = lambda n: "%d%s" % (n, \
@@ -128,17 +128,17 @@ def makeTaskPrototype(self, offer):
             print "%s try for \"%s\"" % \
               (ordinal(self.tasksRetrying[url]), url)
 
-            if task_id.endswith(CRAWLER_TASK_SUFFIX):
-              self.crawlQueue.append(url)
-            elif task_id.endswith(RENDER_TASK_SUFFIX):
-              self.renderQueue.append(url)
+            if task_id.endswith(FINDER_TASK_SUFFIX):
+              self.finderQueue.append(url)
+            elif task_id.endswith(DEFINER_TASK_SUFFIX):
+              self.definerQueue.append(url)
         else:
             self.tasksFailed += 1
             print "Task for \"%s\" cannot be completed, attempt limit reached" % url
 
     def printStatistics(self):
-        print "Queue length: %d crawl, %d render; Tasks: %d running, %d failed" % (
-          len(self.crawlQueue), len(self.renderQueue), self.tasksRunning, self.tasksFailed
+        print "Queue length: %d finder, %d definer; Tasks: %d running, %d failed" % (
+          len(self.finderQueue), len(self.definerQueue), self.tasksRunning, self.tasksFailed
         )
 
     def maxTasksForOffer(self, offer):
@@ -205,14 +205,14 @@ def makeTaskPrototype(self, offer):
         """
         o = json.loads(message)
 
-        if executorId.value == crawlExecutor.executor_id.value:
-            result = results.CrawlResult(o['taskId'], o['url'], o['links'])
+        if executorId.value == finderExecutor.executor_id.value:
+            result = results.finderResult(o['taskId'], o['url'], o['links'])
             #
             # TODO
             #
 
-        elif executorId.value == renderExecutor.executor_id.value:
-            result = results.RenderResult(o['taskId'], o['url'], o['imageUrl'])
+        elif executorId.value == definerExecutor.executor_id.value:
+            result = results.definerResult(o['taskId'], o['url'], o['imageUrl'])
             #
             # TODO
             #
@@ -262,47 +262,47 @@ def graceful_shutdown(signal, frame):
 #
 if __name__ == "__main__":
     if len(sys.argv) < 3 or len(sys.argv) > 4:
-        print "Usage: %s seedWord mesosMasterUrl [maxRenderTasks]" % sys.argv[0]
+        print "Usage: %s seedWord mesosMasterUrl [maxDefinerTasks]" % sys.argv[0]
         sys.exit(1)
 
     baseURI = "home/vagrant/sandbox/mesosphere/ANAGRAMMER"
     suffixURI = "hostfiles"
-    uris = [ "crawl_executor.py",
+    uris = [ "anagram_finder.py",
              "export_dot.py",
-             "render_executor.py",
+             "definer_executor.py",
              "results.py",
              "task_state.py" ]
     uris = [os.path.join(baseURI, suffixURI, uri) for uri in uris]
 
-    crawlExecutor = mesos_pb2.ExecutorInfo()
-    crawlExecutor.executor_id.value = "crawl-executor"
-    crawlExecutor.command.value = "python crawl_executor.py"
+    finderExecutor = mesos_pb2.ExecutorInfo()
+    finderExecutor.executor_id.value = "finder-executor"
+    finderExecutor.command.value = "python anagram_finder.py"
 
     for uri in uris:
-        uri_proto = crawlExecutor.command.uris.add()
+        uri_proto = finderExecutor.command.uris.add()
         uri_proto.value = uri
         uri_proto.extract = False
 
-    crawlExecutor.name = "Crawler"
+    finderExecutor.name = "Finder"
 
-    renderExecutor = mesos_pb2.ExecutorInfo()
-    renderExecutor.executor_id.value = "render-executor"
-    renderExecutor.command.value = "python render_executor.py --local"
+    definerExecutor = mesos_pb2.ExecutorInfo()
+    definerExecutor.executor_id.value = "definer-executor"
+    definerExecutor.command.value = "python definer_executor.py --local"
 
     for uri in uris:
-        uri_proto = renderExecutor.command.uris.add()
+        uri_proto = definerExecutor.command.uris.add()
         uri_proto.value = uri
         uri_proto.extract = False
 
-    renderExecutor.name = "Renderer"
+    definerExecutor.name = "Definer"
 
     framework = mesos_pb2.FrameworkInfo()
     framework.user = "" # Have Mesos fill in the current user.
     framework.name = "anagrammer"
 
-    try: maxRenderTasks = int(sys.argv[3])
-    except: maxRenderTasks = 0
-    anagrammer = RenderingCrawler(sys.argv[1], maxRenderTasks, crawlExecutor, renderExecutor)
+    try: maxDefinerTasks = int(sys.argv[3])
+    except: maxDefinerTasks = 0
+    anagrammer = RenderingFinder(sys.argv[1], maxDefinerTasks, finderExecutor, definerExecutor)
 
     driver = MesosSchedulerDriver(anagrammer, framework, sys.argv[2])
 
@@ -319,6 +319,6 @@ if __name__ == "__main__":
     while framework_thread.is_alive():
         time.sleep(1)
 
-    export_dot.dot(anagrammer.crawlResults, anagrammer.renderResults, "result.dot")
+    export_dot.dot(anagrammer.finderResults, anagrammer.definerResults, "result.dot")
     print "Goodbye!"
     sys.exit(0)

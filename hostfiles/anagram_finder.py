@@ -34,19 +34,19 @@ except ImportError:
 
 import results
 
-class CrawlExecutor(Executor):
+class FinderExecutor(Executor):
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
-      print "CrawlExecutor registered"
+      print "FinderExecutor registered"
 
     def reregistered(self, driver, slaveInfo):
-      print "CrawlExecutor reregistered"
+      print "FinderExecutor reregistered"
 
     def disconnected(self, driver):
-      print "CrawlExecutor disconnected"
+      print "FinderExecutor disconnected"
 
     def launchTask(self, driver, task):
         def run_task():
-            print "Running crawl task %s" % task.task_id.value
+            print "Running finder task %s" % task.task_id.value
             update = mesos_pb2.TaskStatus()
             update.task_id.value = task.task_id.value
             update.state = mesos_pb2.TASK_RUNNING
@@ -85,9 +85,9 @@ class CrawlExecutor(Executor):
               print "Could not fetch any anagrams from html"
               return
 
-            res = results.CrawlResult(
+            res = results.FinderResult(
               task.task_id.value,
-              word, 
+              word,
               anagrams
             )
             message = repr(res)
@@ -119,5 +119,5 @@ class CrawlExecutor(Executor):
 
 if __name__ == "__main__":
     print "Starting Launching Executor (LE)"
-    driver = MesosExecutorDriver(CrawlExecutor())
+    driver = MesosExecutorDriver(FinderExecutor())
     sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)

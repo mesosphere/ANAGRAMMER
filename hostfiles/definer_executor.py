@@ -36,22 +36,22 @@ except ImportError:
 
 import results
 
-class RenderExecutor(Executor):
+class DefinerExecutor(Executor):
     def __init__(self, local):
         self.local = local
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
-        print "RenderExecutor registered"
+        print "DefinerExecutor registered"
 
     def reregistered(self, driver, slaveInfo):
-        print "RenderExecutor reregistered"
+        print "DefinerExecutor reregistered"
 
     def disconnected(self, driver):
-        print "RenderExecutor disconnected"
+        print "DefinerExecutor disconnected"
 
     def launchTask(self, driver, task):
         def run_task():
-            print "Running render task %s" % task.task_id.value
+            print "Running definer task %s" % task.task_id.value
             update = mesos_pb2.TaskStatus()
             update.task_id.value = task.task_id.value
             update.state = mesos_pb2.TASK_RUNNING
@@ -81,8 +81,8 @@ class RenderExecutor(Executor):
                 print error_msg
                 return
 
-            print "Announcing render result"
-            res = results.RenderResult(
+            print "Announcing definer result"
+            res = results.DefinerResult(
                 task.task_id.value,
                 word,
                 definition
@@ -114,10 +114,10 @@ class RenderExecutor(Executor):
       pass
 
 if __name__ == "__main__":
-    print "Starting Render Executor (RE)"
+    print "Starting Definer Executor (RE)"
     local = False
     if len(sys.argv) == 2 and sys.argv[1] == "--local":
       local = True
 
-    driver = MesosExecutorDriver(RenderExecutor(local))
+    driver = MesosExecutorDriver(DefinerExecutor(local))
     sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)

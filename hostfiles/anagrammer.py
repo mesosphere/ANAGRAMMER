@@ -27,31 +27,31 @@ SHUTDOWN_TIMEOUT = 30  # in seconds
 LEADING_ZEROS_COUNT = 5  # appended to task ID to facilitate lexicographical order
 TASK_ATTEMPTS = 5  # how many times a task is attempted
 
-CRAWLER_TASK_SUFFIX = "-crwl"
-RENDER_TASK_SUFFIX = "-rndr"
+FINDER_TASK_SUFFIX = "-fndr"
+DEFINER_TASK_SUFFIX = "-rndr"
 
 # See the Mesos Framework Development Guide:
 # http://mesos.apache.org/documentation/latest/app-framework-development-guide
 
-class RenderingCrawler(Scheduler):
-    def __init__(self, seedWord, maxRenderTasks, crawlExecutor, renderExecutor):
+class RenderingFinder(Scheduler):
+    def __init__(self, seedWord, maxDefinerTasks, finderExecutor, definerExecutor):
         print "ANAGRAMMER"
         print "======="
         print "seedWord: [%s]\n" % seedWord
         self.seedWord = seedWord
-        self.crawlExecutor  = crawlExecutor
-        self.renderExecutor = renderExecutor
-        self.crawlQueue = deque([seedWord])
-        self.renderQueue = deque([seedWord])
+        self.finderExecutor  = finderExecutor
+        self.definerExecutor = definerExecutor
+        self.finderQueue = deque([seedWord])
+        self.definerQueue = deque([seedWord])
         self.processedURLs = set([seedWord])
-        self.crawlResults = set([])
-        self.renderResults = {}
+        self.finderResults = set([])
+        self.definerResults = {}
         self.tasksCreated  = 0
         self.tasksRunning = 0
         self.tasksFailed = 0
         self.tasksRetrying = {}
-        self.renderLimitReached = False
-        self.maxRenderTasks = maxRenderTasks
+        self.definerLimitReached = False
+        self.maxDefinerTasks = maxDefinerTasks
         self.shuttingDown = False
 
     def registered(self, driver, frameworkId, masterInfo):
@@ -73,19 +73,19 @@ class RenderingCrawler(Scheduler):
         mem.scalar.value = TASK_MEM
         return task
 
-    def makeCrawlTask(self, word, offer):
+    def makeFinderTask(self, word, offer):
         task = self.makeTaskPrototype(offer)
-        task.name = "crawl task %s" % task.task_id.value
-        task.task_id.value += CRAWLER_TASK_SUFFIX
-        task.executor.MergeFrom(self.crawlExecutor)
+        task.name = "finder task %s" % task.task_id.value
+        task.task_id.value += FINDER_TASK_SUFFIX
+        task.executor.MergeFrom(self.finderExecutor)
         task.data = str(word)
         return task
 
-    def makeRenderTask(self, url, offer):
+    def makeDefinerTask(self, url, offer):
         task = self.makeTaskPrototype(offer)
-        task.name = "render task %s" % task.task_id.value
-        task.task_id.value += RENDER_TASK_SUFFIX
-        task.executor.MergeFrom(self.renderExecutor)
+        task.name = "definer task %s" % task.task_id.value
+        task.task_id.value += DEFINER_TASK_SUFFIX
+        task.executor.MergeFrom(self.definerExecutor)
         task.data = str(url)
         return task
 
@@ -102,17 +102,17 @@ class RenderingCrawler(Scheduler):
 
             # TODO(alex): replace this by checking TaskStatus.executor_id,
             # which is available in mesos 0.20
-            if task_id.endswith(CRAWLER_TASK_SUFFIX):
-              self.crawlQueue.append(url)
-            elif task_id.endswith(RENDER_TASK_SUFFIX):
-              self.renderQueue.append(url)
+            if task_id.endswith(FINDER_TASK_SUFFIX):
+              self.finderQueue.append(url)
+            elif task_id.endswith(DEFINER_TASK_SUFFIX):
+              self.definerQueue.append(url)
         else:
             self.tasksFailed += 1
             print "Task for \"%s\" cannot be completed, attempt limit reached" % url
 
     def printStatistics(self):
-        print "Queue length: %d crawl, %d render; Tasks: %d running, %d failed" % (
-          len(self.crawlQueue), len(self.renderQueue), self.tasksRunning, self.tasksFailed
+        print "Queue length: %d finder, %d definer; Tasks: %d running, %d failed" % (
+          len(self.finderQueue), len(self.definerQueue), self.tasksRunning, self.tasksFailed
         )
 
     def maxTasksForOffer(self, offer):
@@ -128,7 +128,7 @@ class RenderingCrawler(Scheduler):
     def resourceOffers(self, driver, offers):
         self.printStatistics()
 
-        if not self.crawlQueue and not self.renderQueue and self.tasksRunning <= 0:
+        if not self.finderQueue and not self.definerQueue and self.tasksRunning <= 0:
             print "Nothing to do, ANAGRAMMER is shutting down"
             hard_shutdown()
 
@@ -147,13 +147,13 @@ class RenderingCrawler(Scheduler):
             tasks = []
 
             for i in range(maxTasks / 2):
-                if self.crawlQueue:
-                    crawlTaskWord = self.crawlQueue.popleft()
-                    task = self.makeCrawlTask(crawlTaskWord, offer)
+                if self.finderQueue:
+                    finderTaskWord = self.finderQueue.popleft()
+                    task = self.makeFinderTask(finderTaskWord, offer)
                     tasks.append(task)
-                if self.renderQueue:
-                    renderTaskUrl = self.renderQueue.popleft()
-                    task = self.makeRenderTask(renderTaskUrl, offer)
+                if self.definerQueue:
+                    definerTaskWord = self.definerQueue.popleft()
+                    task = self.makeDefinerTask(definerTaskWord, offer)
                     tasks.append(task)
 
             if tasks:
@@ -183,25 +183,25 @@ class RenderingCrawler(Scheduler):
     def frameworkMessage(self, driver, executorId, slaveId, message):
         o = json.loads(message)
 
-        if executorId.value == crawlExecutor.executor_id.value:
-            result = results.CrawlResult(o['taskId'], o['word'], o['anagrams'])
+        if executorId.value == finderExecutor.executor_id.value:
+            result = results.FinderResult(o['taskId'], o['word'], o['anagrams'])
             for anagram in result.anagrams:
                 edge = (result.word, anagram)
-                print "Appending [%s] to crawl results" % repr(edge)
-                self.crawlResults.add(edge)
-                if not self.renderLimitReached and self.maxRenderTasks > 0 and \
-                  self.maxRenderTasks <= len(self.processedURLs):
-                    print "Render task limit (%d) reached" % self.maxRenderTasks
-                    self.renderLimitReached = True
-                if not anagram in self.processedURLs and not self.renderLimitReached:
+                print "Appending [%s] to finder results" % repr(edge)
+                self.finderResults.add(edge)
+                if not self.definerLimitReached and self.maxDefinerTasks > 0 and \
+                  self.maxDefinerTasks <= len(self.processedURLs):
+                    print "Definer task limit (%d) reached" % self.maxDefinerTasks
+                    self.definerLimitReached = True
+                if not anagram in self.processedURLs and not self.definerLimitReached:
                     print "Enqueueing [%s]" % anagram
-                    self.renderQueue.append(anagram)
+                    self.definerQueue.append(anagram)
                     self.processedURLs.add(anagram)
 
-        elif executorId.value == renderExecutor.executor_id.value:
-            result = results.RenderResult(o['taskId'], o['word'], o['definition'])
-            print "Appending [%s] to render results" % repr((result.word, result.definition))
-            self.renderResults[result.word] = result.definition
+        elif executorId.value == definerExecutor.executor_id.value:
+            result = results.DefinerResult(o['taskId'], o['word'], o['definition'])
+            print "Appending [%s] to definer results" % repr((result.word, result.definition))
+            self.definerResults[result.word] = result.definition
 
 def hard_shutdown():
     driver.stop()
@@ -225,47 +225,47 @@ def graceful_shutdown(signal, frame):
 #
 if __name__ == "__main__":
     if len(sys.argv) < 3 or len(sys.argv) > 4:
-        print "Usage: %s seedWord mesosMasterUrl [maxRenderTasks]" % sys.argv[0]
+        print "Usage: %s seedWord mesosMasterUrl [maxDefinerTasks]" % sys.argv[0]
         sys.exit(1)
 
     baseURI = "/home/vagrant/sandbox/mesosphere/ANAGRAMMER"
     suffixURI = "hostfiles"
-    uris = [ "crawl_executor.py",
+    uris = [ "anagram_finder.py",
              "export_dot.py",
-             "render_executor.py",
+             "definer_executor.py",
              "results.py",
              "task_state.py" ]
     uris = [os.path.join(baseURI, suffixURI, uri) for uri in uris]
 
-    crawlExecutor = mesos_pb2.ExecutorInfo()
-    crawlExecutor.executor_id.value = "crawl-executor"
-    crawlExecutor.command.value = "python crawl_executor.py"
+    finderExecutor = mesos_pb2.ExecutorInfo()
+    finderExecutor.executor_id.value = "anagram-finder"
+    finderExecutor.command.value = "python anagram_finder.py"
 
     for uri in uris:
-        uri_proto = crawlExecutor.command.uris.add()
+        uri_proto = finderExecutor.command.uris.add()
         uri_proto.value = uri
         uri_proto.extract = False
 
-    crawlExecutor.name = "Crawler"
+    finderExecutor.name = "Finder"
 
-    renderExecutor = mesos_pb2.ExecutorInfo()
-    renderExecutor.executor_id.value = "render-executor"
-    renderExecutor.command.value = "python render_executor.py --local"
+    definerExecutor = mesos_pb2.ExecutorInfo()
+    definerExecutor.executor_id.value = "definer-executor"
+    definerExecutor.command.value = "python definer_executor.py --local"
 
     for uri in uris:
-        uri_proto = renderExecutor.command.uris.add()
+        uri_proto = definerExecutor.command.uris.add()
         uri_proto.value = uri
         uri_proto.extract = False
 
-    renderExecutor.name = "Renderer"
+    definerExecutor.name = "Definer"
 
     framework = mesos_pb2.FrameworkInfo()
     framework.user = "" # Have Mesos fill in the current user.
     framework.name = "anagrammer"
 
-    try: maxRenderTasks = int(sys.argv[3])
-    except: maxRenderTasks = 0
-    anagrammer = RenderingCrawler(sys.argv[1], maxRenderTasks, crawlExecutor, renderExecutor)
+    try: maxDefinerTasks = int(sys.argv[3])
+    except: maxDefinerTasks = 0
+    anagrammer = RenderingFinder(sys.argv[1], maxDefinerTasks, finderExecutor, definerExecutor)
 
     driver = MesosSchedulerDriver(anagrammer, framework, sys.argv[2])
 
@@ -282,6 +282,6 @@ if __name__ == "__main__":
     while framework_thread.is_alive():
         time.sleep(1)
 
-    export_dot.dot(anagrammer.crawlResults, anagrammer.renderResults, "result.dot")
+    export_dot.dot(anagrammer.finderResults, anagrammer.definerResults, "result.dot")
     print "Goodbye!"
     sys.exit(0)
