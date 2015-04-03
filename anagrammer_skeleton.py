@@ -265,7 +265,7 @@ if __name__ == "__main__":
         print "Usage: %s seedWord mesosMasterUrl [maxDefinerTasks]" % sys.argv[0]
         sys.exit(1)
 
-    baseURI = "home/vagrant/sandbox/mesosphere/ANAGRAMMER"
+    baseURI = "home/vagrant/"
     suffixURI = "hostfiles"
     uris = [ "anagram_finder.py",
              "export_dot.py",

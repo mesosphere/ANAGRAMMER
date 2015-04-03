@@ -37,7 +37,7 @@ You can see that 1 slave is registered and you've got some idle CPUs and Memory.
 ### Run ANAGRAMMER in the `mesos-demo` VM
 ```bash
 $ vagrant ssh
-vagrant@mesos:~ $ cd sandbox/mesosphere/ANAGRAMMER/hostfiles
+vagrant@mesos:~ $ cd hostfiles
 
 # Start the scheduler with the seed word, the mesos master ip and optionally a task limit
 vagrant@mesos:hostfiles $ python anagrammer.py word 127.0.1.1:5050 42
